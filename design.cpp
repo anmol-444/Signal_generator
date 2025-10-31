@@ -66,7 +66,7 @@ void encodeAMI(char* bits, int* encoded, int n) {
     }
 }
 
-//SCRAMBLING:-
+// SCRAMBLING:-
 
 // --- B8ZS Scrambling ---
 void scrambleB8ZS(char* bits, int* encoded, int n) {
@@ -83,9 +83,7 @@ void scrambleB8ZS(char* bits, int* encoded, int n) {
             zeroCount++;
         }
         
-        
         if (zeroCount == 8) {
-        
             encoded[i-4] = flag ? -1 : 1;   
             encoded[i-3] = flag ? 1 : -1;   
             encoded[i-1] = flag ? 1 : -1;   
@@ -95,7 +93,7 @@ void scrambleB8ZS(char* bits, int* encoded, int n) {
     }
 }
 
-// HDB3 - 
+// --- HDB3 Scrambling ---
 void scrambleHDB3(char* bits, int* encoded, int n) {
     int zeroCount = 0;
     bool flag = true;      
@@ -112,14 +110,11 @@ void scrambleHDB3(char* bits, int* encoded, int n) {
             zeroCount++;
         }
         
-        
         if (zeroCount == 4) {
             if (flag) {
-                
                 encoded[i-3] = prev ? -1 : 1;   
                 encoded[i] = prev ? -1 : 1;     
             } else {
-            
                 encoded[i] = prev ? 1 : -1;     
             }
             zeroCount = 0;
@@ -129,10 +124,7 @@ void scrambleHDB3(char* bits, int* encoded, int n) {
     }
 }
 
-
-
-
-//MODULATION:-
+// MODULATION:-
 
 int encodePCM(double* analog, int samples, char* bits, int bitsPerSample) {
     double maxVal = analog[0], minVal = analog[0];
@@ -172,7 +164,7 @@ int encodeDeltaMod(double* analog, int samples, char* bits) {
     return samples;
 }
 
-//ANALYTICAL:-
+// ANALYTICAL:-
 
 void findLongestPalindrome(char* str, int n) {
     int maxLen = 1, start = 0;
@@ -232,7 +224,8 @@ void findLongestZeroRun(int* signal, int n) {
              << " zeros starting at position " << maxStart << endl;
 }
 
-//OPENGL:-
+// OPENGL:-
+
 void drawText(float x, float y, const char* text) {
     glRasterPos2f(x, y);
     for (int i = 0; text[i] != '\0'; i++) {
@@ -240,14 +233,12 @@ void drawText(float x, float y, const char* text) {
     }
 }
 
-
 void drawBoldText(float x, float y, const char* text) {
     glRasterPos2f(x, y);
     for (int i = 0; text[i] != '\0'; i++) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
     }
 }
-
 
 void display() {
     glClear(GL_COLOR_BUFFER_BIT);
@@ -259,13 +250,13 @@ void display() {
 
     float yScale = 0.35f;
 
-    // Title
-    glColor3f(0.0, 0.0, 0.0);
+    // Title (White text for black background)
+    glColor3f(1.0, 1.0, 1.0);
     drawBoldText(-0.95f, 0.92f, signalTitle);
 
-    // Axes
-    glColor3f(0.0, 0.0, 0.0);
-    glLineWidth(2.5f);
+    // Axes (Gray lines)
+    glColor3f(0.7, 0.7, 0.7);
+    glLineWidth(2.0f);
     glBegin(GL_LINES);
         glVertex2f(-0.9f, 0.0f);
         glVertex2f(0.9f, 0.0f);
@@ -273,8 +264,8 @@ void display() {
         glVertex2f(-0.9f, 0.8f);
     glEnd();
 
-    // Grid lines
-    glColor3f(0.7, 0.7, 0.7);
+    // Grid lines (Dim gray)
+    glColor3f(0.3, 0.3, 0.3);
     glLineWidth(1.0f);
     glBegin(GL_LINES);
         glVertex2f(-0.9f, 1.0f * yScale);
@@ -283,62 +274,11 @@ void display() {
         glVertex2f(0.9f, -1.0f * yScale);
     glEnd();
 
-    // Vertical divisions
-    glColor3f(0.88, 0.88, 0.88);
-    glLineWidth(0.5f);
-    glBegin(GL_LINES);
-        float xStep = 1.8f / signalLength;
-        for (int i = 0; i <= signalLength; i++) {
-            float x = -0.9f + i * xStep;
-            glVertex2f(x, -0.8f);
-            glVertex2f(x, 0.8f);
-        }
-    glEnd();
-
-    // Y-axis labels
-    glColor3f(0.0, 0.0, 0.0);
-    drawText(-0.99f, 1.0f * yScale - 0.02f, "+1");
-    drawText(-0.97f, -0.03f, "0");
-    drawText(-0.99f, -1.0f * yScale - 0.02f, "-1");
-
-    // X-axis labels and info
-    int labelStep = 1;
-    if (isManchester) {
-        if (signalLength > 40) labelStep = 4;
-        else if (signalLength > 20) labelStep = 2;
-
-        for (int i = 0; i <= signalLength; i += labelStep) {
-            char label[10];
-            sprintf(label, "%.1f", i * 0.5);
-            float x = -0.9f + i * xStep - 0.02f;
-            drawText(x, -0.88f, label);
-        }
-
-        glColor3f(0.5, 0.0, 0.5);
-        drawText(-0.3f, -0.95f, "Bit Position (mid-transitions at 0.5, 1.5, 2.5...)");
-    } else {
-        if (signalLength > 30) labelStep = 5;
-        else if (signalLength > 15) labelStep = 2;
-
-        for (int i = 0; i <= signalLength; i += labelStep) {
-            char label[10];
-            sprintf(label, "%d", i);
-            float x = -0.9f + i * xStep - 0.015f;
-            drawText(x, -0.88f, label);
-        }
-
-        glColor3f(0.0, 0.0, 0.0);
-        drawText(-0.08f, -0.95f, "Bit Position");
-    }
-
-    // Voltage label
-    glColor3f(0.0, 0.0, 0.0);
-    drawText(-0.99f, 0.85f, "Voltage");
-
-    // Draw signal line
-    glColor3f(0.0, 0.0, 1.0);
+    // Signal line (Bright cyan)
+    glColor3f(0.0, 1.0, 1.0);
     glLineWidth(3.0f);
     glBegin(GL_LINE_STRIP);
+        float xStep = 1.8f / signalLength;
         for (int i = 0; i < signalLength; i++) {
             float x1 = -0.9f + i * xStep;
             float x2 = -0.9f + (i + 1) * xStep;
@@ -355,38 +295,16 @@ void display() {
         }
     glEnd();
 
-    
-    glColor3f(0.6, 0.0, 0.0);
-    if (signalLength <= 25) {
-        for (int i = 0; i < signalLength; i++) {
-            float x = -0.9f + (i + 0.5f) * xStep - 0.015f;
-            float y = currentSignal[i] * yScale;
-            char valLabel[5];
-
-            if (currentSignal[i] == 1) {
-                sprintf(valLabel, "+1");
-                drawText(x, y + 0.08f, valLabel);
-            } else if (currentSignal[i] == -1) {
-                sprintf(valLabel, "-1");
-                drawText(x, y - 0.12f, valLabel);
-            } else {
-                sprintf(valLabel, "0");
-                drawText(x, y + 0.05f, valLabel);
-            }
-        }
-    }
-
     glFlush();
 }
 
-
+// ✅ Background color changed here
 void initializeGL() {
-    glClearColor(1.0, 1.0, 1.0, 1.0);
+    glClearColor(0.0, 0.0, 0.0, 1.0);  // BLACK background
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluOrtho2D(-1.0, 1.0, -1.0, 1.0);
 }
-
 
 void showSignal(int* signal, int len, const char* title, bool manchester) {
     currentSignal = signal;
@@ -395,8 +313,8 @@ void showSignal(int* signal, int len, const char* title, bool manchester) {
     isManchester = manchester;
     glutPostRedisplay();
 }
-//MAIN:-
 
+// MAIN:-
 int main(int argc, char** argv) {
     int modeChoice;
     cout << "----: Digital Signal Generator :----" << endl;
@@ -494,10 +412,8 @@ int main(int argc, char** argv) {
                 cin >> scrType;
 
                 if (scrType == 1) {
-                    // B8ZS
                     scrambleB8ZS(bitStream, encoded, encLen);
                     strcpy(title, "AMI with B8ZS");
-                    
                 } else {
                     scrambleHDB3(bitStream, encoded, encLen);
                     strcpy(title, "AMI with HDB3");
