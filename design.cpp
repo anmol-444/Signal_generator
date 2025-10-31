@@ -1,353 +1,532 @@
 #include <iostream>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
+#include <cstdio>
 #include "GL/glut.h"
-
 using namespace std;
 
-int* current_signal = NULL;
-int signal_length = 0;
-char signal_title[100] = "";
-bool is_manchester_encoding = false;
+// Global variables
+int* currentSignal = NULL;
+int signalLength = 0;
+char signalTitle[100] = "";
+bool isManchester = false;
 
-// Line Coding Functions
+// LINE CODING :-
 
-void encode_NRZ_L(char* data, int* output, int len) {
-    for (int i = 0; i < len; i++)
-        output[i] = (data[i] == '1') ? 1 : -1;
-}
-
-void encode_NRZ_I(char* data, int* output, int len) {
-    int current_level = -1;
-    for (int i = 0; i < len; i++) {
-        if (data[i] == '1') current_level = -current_level;
-        output[i] = current_level;
+void encodeNRZL(char* bits, int* encoded, int n) {
+    for (int i = 0; i < n; i++) {
+        encoded[i] = (bits[i] == '1') ? 1 : -1;
     }
 }
 
-void encode_MANCHESTER(char* data, int* output, int len) {
-    for (int i = 0; i < len; i++) {
-        if (data[i] == '0') {
-            output[2*i] = 1;
-            output[2*i + 1] = -1;
+void encodeNRZI(char* bits, int* encoded, int n) {
+    int level = -1;
+    for (int i = 0; i < n; i++) {
+        if (bits[i] == '1') level = -level;
+        encoded[i] = level;
+    }
+}
+
+void encodeManchester(char* bits, int* encoded, int n) {
+    for (int i = 0; i < n; i++) {
+        if (bits[i] == '0') {
+            encoded[2*i] = 1;
+            encoded[2*i + 1] = -1;
         } else {
-            output[2*i] = -1;
-            output[2*i + 1] = 1;
+            encoded[2*i] = -1;
+            encoded[2*i + 1] = 1;
         }
     }
 }
 
-void encode_DIFF_MANCHESTER(char* data, int* output, int len) {
-    int last_level = -1;
-    for (int i = 0; i < len; i++) {
-        if (data[i] == '0') {
-            last_level = -last_level;
-            output[2*i] = last_level;
-            output[2*i + 1] = -last_level;
+void encodeDiffManchester(char* bits, int* encoded, int n) {
+    int prevLevel = -1;
+    for (int i = 0; i < n; i++) {
+        if (bits[i] == '0') {
+            prevLevel = -prevLevel;
+            encoded[2*i] = prevLevel;
+            encoded[2*i + 1] = -prevLevel;
         } else {
-            output[2*i] = last_level;
-            output[2*i + 1] = -last_level;
+            encoded[2*i] = prevLevel;
+            encoded[2*i + 1] = -prevLevel;
         }
-        last_level = -last_level;
+        prevLevel = -prevLevel;
     }
 }
 
-void encode_AMI(char* data, int* output, int len) {
-    int last_polarity = 1;
-    for (int i = 0; i < len; i++) {
-        if (data[i] == '0') output[i] = 0;
+void encodeAMI(char* bits, int* encoded, int n) {
+    int lastPolarity = 1;
+    for (int i = 0; i < n; i++) {
+        if (bits[i] == '0') encoded[i] = 0;
         else {
-            output[i] = last_polarity;
-            last_polarity = -last_polarity;
+            encoded[i] = lastPolarity;
+            lastPolarity = -lastPolarity;
         }
     }
 }
 
-// Scrambling
+//SCRAMBLING:-
 
-void apply_B8ZS(int* signal, int len) {
-    int last_polarity = 1;
-    for (int i = 0; i <= len - 8; i++) {
-        if (signal[i] != 0) last_polarity = signal[i];
-        bool eight_zeros = true;
-        for (int j = i; j < i + 8; j++) {
-            if (signal[j] != 0) { eight_zeros = false; break; }
+// --- B8ZS Scrambling ---
+void scrambleB8ZS(char* bits, int* encoded, int n) {
+    int zeroCount = 0;
+    bool flag = true;  
+    
+    for (int i = 0; i < n; i++) {
+        if (bits[i] == '1') {
+            encoded[i] = flag ? 1 : -1;
+            zeroCount = 0;
+            flag = !flag;
+        } else {
+            encoded[i] = 0;
+            zeroCount++;
         }
-        if (eight_zeros) {
-            signal[i+3] = last_polarity;
-            signal[i+4] = -last_polarity;
-            signal[i+6] = last_polarity;
-            signal[i+7] = -last_polarity;
-            last_polarity = -last_polarity;
-            i += 7;
+        
+        
+        if (zeroCount == 8) {
+        
+            encoded[i-4] = flag ? -1 : 1;   
+            encoded[i-3] = flag ? 1 : -1;   
+            encoded[i-1] = flag ? 1 : -1;   
+            encoded[i] = flag ? -1 : 1;     
+            zeroCount = 0;
         }
     }
 }
 
-void apply_HDB3(int* signal, int len) {
-    int ones = 0;
-    int last_polarity = 1;
-    for (int i = 0; i <= len - 4; i++) {
-        if (signal[i] != 0) {
-            last_polarity = signal[i];
-            ones++;
+// HDB3 - 
+void scrambleHDB3(char* bits, int* encoded, int n) {
+    int zeroCount = 0;
+    bool flag = true;      
+    bool prev = false;     
+    
+    for (int i = 0; i < n; i++) {
+        if (bits[i] == '1') {
+            encoded[i] = prev ? -1 : 1;
+            zeroCount = 0;
+            flag = !flag;
+            prev = !prev;
+        } else {
+            encoded[i] = 0;
+            zeroCount++;
         }
-        bool four_zeros = true;
-        for (int j = i; j < i + 4; j++) {
-            if (signal[j] != 0) { four_zeros = false; break; }
-        }
-        if (four_zeros) {
-            if (ones % 2 == 0) {
-                signal[i] = -last_polarity;
-                signal[i+3] = last_polarity;
+        
+        
+        if (zeroCount == 4) {
+            if (flag) {
+                
+                encoded[i-3] = prev ? -1 : 1;   
+                encoded[i] = prev ? -1 : 1;     
             } else {
-                signal[i+3] = last_polarity;
+            
+                encoded[i] = prev ? 1 : -1;     
             }
-            last_polarity = -last_polarity;
-            ones = 1;
-            i += 3;
+            zeroCount = 0;
+            flag = true;
+            prev = (encoded[i] > 0);
         }
     }
 }
 
-// Modulation
 
-int pcm_encode(double* analog, int samples, char* output, int bits) {
-    double max_val = analog[0], min_val = analog[0];
+
+
+//MODULATION:-
+
+int encodePCM(double* analog, int samples, char* bits, int bitsPerSample) {
+    double maxVal = analog[0], minVal = analog[0];
     for (int i = 1; i < samples; i++) {
-        if (analog[i] > max_val) max_val = analog[i];
-        if (analog[i] < min_val) min_val = analog[i];
+        if (analog[i] > maxVal) maxVal = analog[i];
+        if (analog[i] < minVal) minVal = analog[i];
     }
 
-    int levels = pow(2, bits);
-    double step = (max_val - min_val) / levels;
-    int out_len = 0;
+    int levels = pow(2, bitsPerSample);
+    double step = (maxVal - minVal) / levels;
+    int bitIndex = 0;
 
     for (int i = 0; i < samples; i++) {
-        int q = (int)((analog[i] - min_val) / step);
-        if (q >= levels) q = levels - 1;
-        for (int j = bits - 1; j >= 0; j--)
-            output[out_len++] = ((q >> j) & 1) ? '1' : '0';
+        int quantized = (int)((analog[i] - minVal) / step);
+        if (quantized >= levels) quantized = levels - 1;
+
+        for (int j = bitsPerSample - 1; j >= 0; j--) {
+            bits[bitIndex++] = ((quantized >> j) & 1) ? '1' : '0';
+        }
     }
-    output[out_len] = '\0';
-    return out_len;
+    bits[bitIndex] = '\0';
+    return bitIndex;
 }
 
-int delta_modulation(double* analog, int samples, char* output) {
+int encodeDeltaMod(double* analog, int samples, char* bits) {
     double prediction = 0.0, delta = 0.5;
     for (int i = 0; i < samples; i++) {
-        if (analog[i] > prediction) { output[i] = '1'; prediction += delta; }
-        else { output[i] = '0'; prediction -= delta; }
+        if (analog[i] > prediction) {
+            bits[i] = '1';
+            prediction += delta;
+        } else {
+            bits[i] = '0';
+            prediction -= delta;
+        }
     }
-    output[samples] = '\0';
+    bits[samples] = '\0';
     return samples;
 }
 
-// Analytical Functions
+//ANALYTICAL:-
 
-void find_longest_palindrome(char* data, int len) {
-    int max_len = 1, start = 0;
-    for (int i = 0; i < len; i++) {
-        for (int j = i; j < len; j++) {
-            bool pal = true;
-            for (int k = 0; k < (j - i + 1)/2; k++)
-                if (data[i+k] != data[j-k]) pal = false;
-            if (pal && (j - i + 1) > max_len) {
-                max_len = j - i + 1;
-                start = i;
-            }
+void findLongestPalindrome(char* str, int n) {
+    int maxLen = 1, start = 0;
+    char* temp = new char[2 * n + 3];
+    int tLen = 0;
+    temp[tLen++] = '^';
+    for (int i = 0; i < n; i++) {
+        temp[tLen++] = '|';
+        temp[tLen++] = str[i];
+    }
+    temp[tLen++] = '|';
+    temp[tLen++] = '$';
+
+    int* p = new int[tLen];
+    for (int i = 0; i < tLen; i++) p[i] = 0;
+    int center = 0, right = 0;
+
+    for (int i = 1; i < tLen - 1; i++) {
+        int mirror = 2 * center - i;
+        if (i < right) p[i] = min(right - i, p[mirror]);
+        while (temp[i + p[i] + 1] == temp[i - p[i] - 1]) p[i]++;
+        if (i + p[i] > right) {
+            center = i;
+            right = i + p[i];
+        }
+        if (p[i] > maxLen) {
+            maxLen = p[i];
+            start = (i - p[i]) / 2;
         }
     }
+
     cout << "\nLongest Palindrome: ";
-    for (int i = start; i < start + max_len; i++) cout << data[i];
-    cout << " (Length: " << max_len << ")" << endl;
+    for (int i = start; i < start + maxLen; i++) cout << str[i];
+    cout << " (Length: " << maxLen << ")" << endl;
+
+    delete[] temp;
+    delete[] p;
 }
 
-// ==================== OPENGL ====================
+void findLongestZeroRun(int* signal, int n) {
+    int maxCount = 0, count = 0, maxStart = 0, currStart = 0;
+    for (int i = 0; i < n; i++) {
+        if (signal[i] == 0) {
+            if (count == 0) currStart = i;
+            count++;
+        } else {
+            if (count > maxCount) {
+                maxCount = count;
+                maxStart = currStart;
+            }
+            count = 0;
+        }
+    }
+    if (count > maxCount) maxCount = count;
+    if (maxCount > 0)
+        cout << "Longest zero sequence: " << maxCount
+             << " zeros starting at position " << maxStart << endl;
+}
 
-void draw_text(float x, float y, const char* text) {
+//OPENGL:-
+void drawText(float x, float y, const char* text) {
     glRasterPos2f(x, y);
-    for (int i = 0; text[i]; i++)
+    for (int i = 0; text[i] != '\0'; i++) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, text[i]);
+    }
 }
+
+
+void drawBoldText(float x, float y, const char* text) {
+    glRasterPos2f(x, y);
+    for (int i = 0; text[i] != '\0'; i++) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
+    }
+}
+
 
 void display() {
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Background color
-    glBegin(GL_QUADS);
-        glColor3f(0.6f, 0.8f, 0.95f);
-        glVertex2f(-1.0f, 1.0f);
-        glVertex2f(1.0f, 1.0f);
-        glVertex2f(1.0f, -1.0f);
-        glVertex2f(-1.0f, -1.0f);
-    glEnd();
-
-
-    if (!current_signal || signal_length == 0) { glFlush(); return; }
-
-    float x_start = -0.9f, x_end = 0.9f;
-    float y_high = 0.4f, y_low = -0.4f;
-    float step = (x_end - x_start) / signal_length;
-
-    // Grid
-    glColor3f(0.8f, 0.85f, 0.9f);
-    glBegin(GL_LINES);
-    for (int i = 0; i <= signal_length; i++) {
-        float x = x_start + i * step;
-        glVertex2f(x, -0.5f);
-        glVertex2f(x, 0.5f);
+    if (currentSignal == nullptr || signalLength == 0) {
+        glFlush();
+        return;
     }
-    glEnd();
 
-    // Axes
-    glColor3f(0, 0, 0);
-    glLineWidth(2);
-    glBegin(GL_LINES);
-        glVertex2f(x_start, 0.0f);
-        glVertex2f(x_end, 0.0f);
-    glEnd();
+    float yScale = 0.35f;
 
     // Title
-    glColor3f(0.1f, 0.1f, 0.1f);
-    draw_text(-0.3f, 0.7f, signal_title);
+    glColor3f(0.0, 0.0, 0.0);
+    drawBoldText(-0.95f, 0.92f, signalTitle);
 
-    // Signal line (vibrant color)
-    glColor3f(0.4f, 0.0f, 0.7f);
-    glLineWidth(3.0f);
-    glBegin(GL_LINE_STRIP);
-    for (int i = 0; i < signal_length; i++) {
-        float x1 = x_start + i * step;
-        float x2 = x_start + (i + 1) * step;
-        float y = (current_signal[i] == 1) ? y_high : y_low;
-
-        glVertex2f(x1, y);
-        glVertex2f(x2, y);
-
-        if (i < signal_length - 1 && current_signal[i] != current_signal[i+1]) {
-            glVertex2f(x2, y);
-            glVertex2f(x2, (current_signal[i+1] == 1) ? y_high : y_low);
-        }
-    }
+    // Axes
+    glColor3f(0.0, 0.0, 0.0);
+    glLineWidth(2.5f);
+    glBegin(GL_LINES);
+        glVertex2f(-0.9f, 0.0f);
+        glVertex2f(0.9f, 0.0f);
+        glVertex2f(-0.9f, -0.8f);
+        glVertex2f(-0.9f, 0.8f);
     glEnd();
 
-    // Bit labels
-    for (int i = 0; i < signal_length; i++) {
-        char bit[3];
-        sprintf(bit, "%d", current_signal[i]);
-        float x = x_start + (i + 0.4f) * step;
-        draw_text(x, -0.6f, bit);
+    // Grid lines
+    glColor3f(0.7, 0.7, 0.7);
+    glLineWidth(1.0f);
+    glBegin(GL_LINES);
+        glVertex2f(-0.9f, 1.0f * yScale);
+        glVertex2f(0.9f, 1.0f * yScale);
+        glVertex2f(-0.9f, -1.0f * yScale);
+        glVertex2f(0.9f, -1.0f * yScale);
+    glEnd();
+
+    // Vertical divisions
+    glColor3f(0.88, 0.88, 0.88);
+    glLineWidth(0.5f);
+    glBegin(GL_LINES);
+        float xStep = 1.8f / signalLength;
+        for (int i = 0; i <= signalLength; i++) {
+            float x = -0.9f + i * xStep;
+            glVertex2f(x, -0.8f);
+            glVertex2f(x, 0.8f);
+        }
+    glEnd();
+
+    // Y-axis labels
+    glColor3f(0.0, 0.0, 0.0);
+    drawText(-0.99f, 1.0f * yScale - 0.02f, "+1");
+    drawText(-0.97f, -0.03f, "0");
+    drawText(-0.99f, -1.0f * yScale - 0.02f, "-1");
+
+    // X-axis labels and info
+    int labelStep = 1;
+    if (isManchester) {
+        if (signalLength > 40) labelStep = 4;
+        else if (signalLength > 20) labelStep = 2;
+
+        for (int i = 0; i <= signalLength; i += labelStep) {
+            char label[10];
+            sprintf(label, "%.1f", i * 0.5);
+            float x = -0.9f + i * xStep - 0.02f;
+            drawText(x, -0.88f, label);
+        }
+
+        glColor3f(0.5, 0.0, 0.5);
+        drawText(-0.3f, -0.95f, "Bit Position (mid-transitions at 0.5, 1.5, 2.5...)");
+    } else {
+        if (signalLength > 30) labelStep = 5;
+        else if (signalLength > 15) labelStep = 2;
+
+        for (int i = 0; i <= signalLength; i += labelStep) {
+            char label[10];
+            sprintf(label, "%d", i);
+            float x = -0.9f + i * xStep - 0.015f;
+            drawText(x, -0.88f, label);
+        }
+
+        glColor3f(0.0, 0.0, 0.0);
+        drawText(-0.08f, -0.95f, "Bit Position");
+    }
+
+    // Voltage label
+    glColor3f(0.0, 0.0, 0.0);
+    drawText(-0.99f, 0.85f, "Voltage");
+
+    // Draw signal line
+    glColor3f(0.0, 0.0, 1.0);
+    glLineWidth(3.0f);
+    glBegin(GL_LINE_STRIP);
+        for (int i = 0; i < signalLength; i++) {
+            float x1 = -0.9f + i * xStep;
+            float x2 = -0.9f + (i + 1) * xStep;
+            float y = currentSignal[i] * yScale;
+
+            glVertex2f(x1, y);
+            glVertex2f(x2, y);
+
+            if (i < signalLength - 1) {
+                float nextY = currentSignal[i + 1] * yScale;
+                glVertex2f(x2, y);
+                glVertex2f(x2, nextY);
+            }
+        }
+    glEnd();
+
+    
+    glColor3f(0.6, 0.0, 0.0);
+    if (signalLength <= 25) {
+        for (int i = 0; i < signalLength; i++) {
+            float x = -0.9f + (i + 0.5f) * xStep - 0.015f;
+            float y = currentSignal[i] * yScale;
+            char valLabel[5];
+
+            if (currentSignal[i] == 1) {
+                sprintf(valLabel, "+1");
+                drawText(x, y + 0.08f, valLabel);
+            } else if (currentSignal[i] == -1) {
+                sprintf(valLabel, "-1");
+                drawText(x, y - 0.12f, valLabel);
+            } else {
+                sprintf(valLabel, "0");
+                drawText(x, y + 0.05f, valLabel);
+            }
+        }
     }
 
     glFlush();
 }
 
-void init_gl() {
-    glClearColor(1, 1, 1, 1);
+
+void initializeGL() {
+    glClearColor(1.0, 1.0, 1.0, 1.0);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluOrtho2D(-1.0, 1.0, -1.0, 1.0);
 }
 
-void display_signal(int* signal, int len, const char* title, bool manchester) {
-    current_signal = signal;
-    signal_length = len;
-    strcpy(signal_title, title);
-    is_manchester_encoding = manchester;
+
+void showSignal(int* signal, int len, const char* title, bool manchester) {
+    currentSignal = signal;
+    signalLength = len;
+    strcpy(signalTitle, title);
+    isManchester = manchester;
     glutPostRedisplay();
 }
-
+//MAIN:-
 
 int main(int argc, char** argv) {
-    cout << "=== Digital Signal Generator ===\n";
+    int modeChoice;
+    cout << "----: Digital Signal Generator :----" << endl;
     cout << "1. Digital Input\n2. Analog Input (PCM/DM)\nChoice: ";
+    cin >> modeChoice;
 
-    int input_type;
-    cin >> input_type;
+    char bitStream[1000];
+    int bitLen = 0;
 
-    char data[1000];
-    int data_len = 0;
+    if (modeChoice == 2) {
+        cout << "\n1. PCM\n2. DM\nChoice: ";
+        int modType;
+        cin >> modType;
 
-    if (input_type == 2) {
-        cout << "\n1. PCM\n2. Delta Modulation\nChoice: ";
-        int mod_choice; cin >> mod_choice;
+        int nSamples;
+        cout << "Samples: ";
+        cin >> nSamples;
 
-        int samples;
-        cout << "Enter number of samples: ";
-        cin >> samples;
+        double* analog = new double[nSamples];
+        cout << "Values: ";
+        for (int i = 0; i < nSamples; i++) cin >> analog[i];
 
-        double* analog_signal = new double[samples];
-        cout << "Enter values: ";
-        for (int i = 0; i < samples; i++) cin >> analog_signal[i];
-
-        if (mod_choice == 1) {
+        if (modType == 1) {
             int bits;
-            cout << "Bits per sample: ";
+            cout << "Bits/sample: ";
             cin >> bits;
-            data_len = pcm_encode(analog_signal, samples, data, bits);
-            cout << "\nPCM: " << data << endl;
+            bitLen = encodePCM(analog, nSamples, bitStream, bits);
+            cout << "\nPCM: " << bitStream << endl;
         } else {
-            data_len = delta_modulation(analog_signal, samples, data);
-            cout << "\nDelta Modulation: " << data << endl;
+            bitLen = encodeDeltaMod(analog, nSamples, bitStream);
+            cout << "\nDM: " << bitStream << endl;
         }
-        delete[] analog_signal;
+        delete[] analog;
     } else {
-        cout << "Enter binary data: ";
-        cin >> data;
-        data_len = strlen(data);
+        cout << "Binary data: ";
+        cin >> bitStream;
+        bitLen = strlen(bitStream);
     }
 
-    find_longest_palindrome(data, data_len);
+    findLongestPalindrome(bitStream, bitLen);
 
-    cout << "\nEncoding Schemes:\n1. NRZ-L\n2. NRZ-I\n3. Manchester\n4. Diff Manchester\n5. AMI\nChoice: ";
-    int choice; cin >> choice;
+    cout << "\n1. NRZ-L\n2. NRZ-I\n3. Manchester\n4. Diff Manchester\n5. AMI\nChoice: ";
+    int encChoice;
+    cin >> encChoice;
 
     int* encoded = NULL;
-    int encoded_len = 0;
-    bool manchester = false;
+    int encLen = 0;
     char title[100];
+    bool manchesterFlag = false;
 
-    switch (choice) {
-        case 1: encoded_len = data_len; encoded = new int[encoded_len];
-                encode_NRZ_L(data, encoded, data_len);
-                strcpy(title, "NRZ-L Encoding"); break;
-        case 2: encoded_len = data_len; encoded = new int[encoded_len];
-                encode_NRZ_I(data, encoded, data_len);
-                strcpy(title, "NRZ-I Encoding"); break;
-        case 3: encoded_len = data_len * 2; encoded = new int[encoded_len];
-                encode_MANCHESTER(data, encoded, data_len);
-                strcpy(title, "Manchester Encoding"); manchester = true; break;
-        case 4: encoded_len = data_len * 2; encoded = new int[encoded_len];
-                encode_DIFF_MANCHESTER(data, encoded, data_len);
-                strcpy(title, "Differential Manchester"); manchester = true; break;
-        case 5: encoded_len = data_len; encoded = new int[encoded_len];
-                encode_AMI(data, encoded, data_len);
-                strcpy(title, "AMI Encoding");
-                cout << "Apply Scrambling? (1=Yes, 0=No): ";
-                int scr; cin >> scr;
-                if (scr == 1) {
-                    cout << "1. B8ZS\n2. HDB3\nChoice: ";
-                    int s; 
-                    cin >> s;
-                    if (s == 1) { apply_B8ZS(encoded, encoded_len); strcpy(title, "AMI + B8ZS"); }
-                    else { apply_HDB3(encoded, encoded_len); strcpy(title, "AMI + HDB3"); }
+    switch (encChoice) {
+        case 1:
+            encLen = bitLen;
+            encoded = new int[encLen];
+            encodeNRZL(bitStream, encoded, bitLen);
+            strcpy(title, "NRZ-L Encoding");
+            break;
+
+        case 2:
+            encLen = bitLen;
+            encoded = new int[encLen];
+            encodeNRZI(bitStream, encoded, bitLen);
+            strcpy(title, "NRZ-I Encoding");
+            break;
+
+        case 3:
+            encLen = bitLen * 2;
+            encoded = new int[encLen];
+            encodeManchester(bitStream, encoded, bitLen);
+            strcpy(title, "Manchester Encoding");
+            manchesterFlag = true;
+            break;
+
+        case 4:
+            encLen = bitLen * 2;
+            encoded = new int[encLen];
+            encodeDiffManchester(bitStream, encoded, bitLen);
+            strcpy(title, "Differential Manchester");
+            manchesterFlag = true;
+            break;
+
+        case 5:
+            encLen = bitLen;
+            encoded = new int[encLen];
+            encodeAMI(bitStream, encoded, bitLen);
+            strcpy(title, "AMI Encoding");
+
+            cout << "\nScrambling? (1=Yes, 0=No): ";
+            int scrambleChoice;
+            cin >> scrambleChoice;
+
+            if (scrambleChoice == 1) {
+                cout << "1. B8ZS\n2. HDB3\nChoice: ";
+                int scrType;
+                cin >> scrType;
+
+                if (scrType == 1) {
+                    // B8ZS
+                    scrambleB8ZS(bitStream, encoded, encLen);
+                    strcpy(title, "AMI with B8ZS");
+                    
+                } else {
+                    scrambleHDB3(bitStream, encoded, encLen);
+                    strcpy(title, "AMI with HDB3");
                 }
-                break;
-        default: cout << "Invalid!\n"; return 1;
+
+                findLongestZeroRun(encoded, encLen);
+            }
+            break;
+
+        default:
+            cout << "Invalid!" << endl;
+            return 1;
     }
 
     cout << "\nSignal: ";
-    for (int i = 0; i < encoded_len; i++) cout << encoded[i] << " ";
+    for (int i = 0; i < encLen; i++) cout << encoded[i] << " ";
     cout << endl;
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
     glutInitWindowSize(1200, 700);
+    glutInitWindowPosition(50, 50);
     glutCreateWindow("Digital Signal Visualization");
 
-    init_gl();
-    display_signal(encoded, encoded_len, title, manchester);
+    initializeGL();
+    showSignal(encoded, encLen, title, manchesterFlag);
     glutDisplayFunc(display);
+
+    cout << "\nOpenGL window opened. Close to exit..." << endl;
     glutMainLoop();
 
     delete[] encoded;
